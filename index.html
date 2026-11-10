@@ -48,7 +48,7 @@
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
         <div>
           <span class="text-xs uppercase tracking-wider text-indigo-400 font-semibold">Faction War Status</span>
-          <div id="war-status-text" class="text-lg font-bold text-white mt-0.5">Click to view War Telemetry, Member Hits & Bleed Respect</div>
+          <div id="war-status-text" class="text-lg font-bold text-white mt-0.5">Enter API Key and Fetch Data First</div>
         </div>
         <div class="bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
           <span id="war-mode-indicator">View Roster Mode</span> <span>▼</span>
@@ -71,7 +71,6 @@
       </div>
     </div>
 
-    <!-- Dynamic Table Section -->
     <section class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
       <div class="p-6 border-b border-slate-800 flex justify-between items-center">
         <h2 id="table-title" class="text-lg font-semibold text-white">Live Member Roster</h2>
@@ -128,10 +127,11 @@
         document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
       }
 
-      const apiKey = document.getElementById('api-key-input').value.trim();
-      if (apiKey) {
-        fetchAllData();
-      }
+      // Reset data when switching factions until fetch is clicked
+      allMembers = [];
+      renderRoster();
+      document.getElementById('member-count').innerText = '0';
+      document.getElementById('war-status-text').innerText = "Enter API Key and Fetch Data First";
     }
 
     function getPositionWeight(position) {
@@ -169,13 +169,14 @@
       
       if (!apiKey) {
         statusText.innerText = "Please enter an API key.";
+        allMembers = [];
+        renderRoster();
         return;
       }
 
       statusText.innerText = "Querying members & wars via Netlify Backend...";
 
       try {
-        // Fetch members and wars concurrently
         const [membersRes, warsRes, attacksRes] = await Promise.all([
           fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=members&key=${apiKey}`),
           fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=wars&key=${apiKey}`),
@@ -188,6 +189,8 @@
 
         if (membersJson.error) {
           statusText.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
+          allMembers = [];
+          renderRoster();
           return;
         }
 
@@ -197,7 +200,6 @@
 
         document.getElementById('member-count').innerText = allMembers.length;
 
-        // Update War Banner Text
         const warKeys = Object.keys(factionWars);
         if (warKeys.length > 0) {
           document.getElementById('war-status-text').innerText = `Active War Detected! (${warKeys.length} ongoing conflict(s)) - Click to view Bleed & Hits`;
@@ -219,10 +221,18 @@
 
       } catch (err) {
         statusText.innerText = `Fetch Error: ${err.message}`;
+        allMembers = [];
+        renderRoster();
       }
     }
 
     function toggleWarView() {
+      const apiKey = document.getElementById('api-key-input').value.trim();
+      if (!apiKey || allMembers.length === 0) {
+        alert("Please enter your API key and click 'Fetch Live Data' first.");
+        return;
+      }
+
       isWarViewActive = !isWarViewActive;
       const indicator = document.getElementById('war-mode-indicator');
       
@@ -250,7 +260,7 @@
       tableBody.innerHTML = '';
 
       if (allMembers.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned. Fetch data first.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">Enter your API key and click "Fetch Live Data".</td></tr>';
         return;
       }
 
@@ -296,13 +306,11 @@
         return;
       }
 
-      // Aggregate attack metrics per member ID
       const stats = {};
       allMembers.forEach(m => {
         stats[m.id] = { name: m.name, hits: 0, bleedCount: 0, bleedRespect: 0 };
       });
 
-      // Parse attack logs if available
       const attacksList = Array.isArray(factionAttacks) ? factionAttacks : Object.values(factionAttacks);
       attacksList.forEach(atk => {
         const attackerId = atk.attacker_id || atk.attacker;
