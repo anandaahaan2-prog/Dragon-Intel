@@ -38,9 +38,22 @@
         <input type="password" id="api-key-input" placeholder="Paste Public API Key here..." 
           class="w-full bg-slate-950 border border-slate-800 text-slate-200 px-3 py-2 rounded text-sm focus:outline-none focus:border-indigo-500" />
       </div>
-      <button onclick="fetchData()" class="w-full md:w-auto mt-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded transition-colors">
+      <button onclick="fetchAllData()" class="w-full md:w-auto mt-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded transition-colors">
         Fetch Live Data
       </button>
+    </section>
+
+    <!-- War Status & Ongoing Wars Clickable Banner -->
+    <section onclick="toggleWarView()" class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-500/30 p-5 rounded-xl shadow-xl cursor-pointer hover:border-indigo-500 transition-all">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+        <div>
+          <span class="text-xs uppercase tracking-wider text-indigo-400 font-semibold">Faction War Status</span>
+          <div id="war-status-text" class="text-lg font-bold text-white mt-0.5">Click to view War Telemetry, Member Hits & Bleed Respect</div>
+        </div>
+        <div class="bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+          <span id="war-mode-indicator">View Roster Mode</span> <span>▼</span>
+        </div>
+      </div>
     </section>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -58,16 +71,17 @@
       </div>
     </div>
 
+    <!-- Dynamic Table Section -->
     <section class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
       <div class="p-6 border-b border-slate-800 flex justify-between items-center">
-        <h2 class="text-lg font-semibold text-white">Live Member Roster</h2>
-        <span class="text-xs text-slate-500">Click column headers to sort</span>
+        <h2 id="table-title" class="text-lg font-semibold text-white">Live Member Roster</h2>
+        <span id="table-subtitle" class="text-xs text-slate-500">Click column headers to sort</span>
       </div>
 
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse select-none">
           <thead>
-            <tr class="bg-slate-950/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
+            <tr id="table-header" class="bg-slate-950/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
               <th onclick="sortMembers('name')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Name / ID <span id="indicator-name" class="text-slate-600 ml-1">↕</span></th>
               <th onclick="sortMembers('level')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Level <span id="indicator-level" class="text-slate-600 ml-1">↕</span></th>
               <th onclick="sortMembers('status')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Status <span id="indicator-status" class="text-indigo-400 font-bold ml-1">▼</span></th>
@@ -88,6 +102,10 @@
     let currentFactionId = '55650';
     let currentFactionName = 'Crimson Dragon';
     let allMembers = [];
+    let factionAttacks = [];
+    let factionWars = {};
+    let isWarViewActive = false;
+
     let currentSortColumn = 'status';
     let currentSortDirection = 'asc';
 
@@ -112,7 +130,7 @@
 
       const apiKey = document.getElementById('api-key-input').value.trim();
       if (apiKey) {
-        fetchData();
+        fetchAllData();
       }
     }
 
@@ -140,23 +158,181 @@
       const now = Math.floor(Date.now() / 1000);
       const diff = untilTimestamp - now;
       if (diff <= 0) return '';
-
       const hours = Math.floor(diff / 3600);
       const minutes = Math.floor((diff % 3600) / 60);
-      const seconds = diff % 60;
+      return hours > 0 ? ` (${hours}h ${minutes}m)` : ` (${minutes}m)`;
+    }
 
-      if (hours > 0) {
-        return ` (${hours}h ${minutes}m)`;
-      } else if (minutes > 0) {
-        return ` (${minutes}m ${seconds}s)`;
-      } else {
-        return ` (${seconds}s)`;
+    async function fetchAllData() {
+      const apiKey = document.getElementById('api-key-input').value.trim();
+      const statusText = document.getElementById('roster-status');
+      
+      if (!apiKey) {
+        statusText.innerText = "Please enter an API key.";
+        return;
+      }
+
+      statusText.innerText = "Querying members & wars via Netlify Backend...";
+
+      try {
+        // Fetch members and wars concurrently
+        const [membersRes, warsRes, attacksRes] = await Promise.all([
+          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=members&key=${apiKey}`),
+          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=wars&key=${apiKey}`),
+          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=attacks&key=${apiKey}`).catch(() => null)
+        ]);
+
+        const membersJson = await membersRes.json();
+        const warsJson = await warsRes.json();
+        const attacksJson = attacksRes ? await attacksRes.json() : {};
+
+        if (membersJson.error) {
+          statusText.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
+          return;
+        }
+
+        allMembers = membersJson.members || membersJson.faction?.members || [];
+        factionWars = warsJson.wars || warsJson || {};
+        factionAttacks = attacksJson.attacks || attacksJson || [];
+
+        document.getElementById('member-count').innerText = allMembers.length;
+
+        // Update War Banner Text
+        const warKeys = Object.keys(factionWars);
+        if (warKeys.length > 0) {
+          document.getElementById('war-status-text').innerText = `Active War Detected! (${warKeys.length} ongoing conflict(s)) - Click to view Bleed & Hits`;
+        } else {
+          document.getElementById('war-status-text').innerText = `No active faction wars found. Click to view attack records.`;
+        }
+
+        if (isWarViewActive) {
+          renderWarTable();
+        } else {
+          currentSortColumn = 'status';
+          currentSortDirection = 'asc';
+          allMembers.sort((a, b) => getStatusWeight(a.status) - getStatusWeight(b.status));
+          updateSortIndicators();
+          renderRoster();
+        }
+
+        statusText.innerText = `Successfully loaded data for ${currentFactionName}!`;
+
+      } catch (err) {
+        statusText.innerText = `Fetch Error: ${err.message}`;
       }
     }
 
-    function sortMembers(column) {
-      if (allMembers.length === 0) return;
+    function toggleWarView() {
+      isWarViewActive = !isWarViewActive;
+      const indicator = document.getElementById('war-mode-indicator');
+      
+      if (isWarViewActive) {
+        indicator.innerText = "Active War & Bleed Mode";
+        renderWarTable();
+      } else {
+        indicator.innerText = "View Roster Mode";
+        renderRoster();
+      }
+    }
 
+    function renderRoster() {
+      document.getElementById('table-title').innerText = "Live Member Roster";
+      document.getElementById('table-subtitle').innerText = "Click column headers to sort";
+      
+      document.getElementById('table-header').innerHTML = `
+        <th onclick="sortMembers('name')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Name / ID <span id="indicator-name" class="text-slate-600 ml-1">↕</span></th>
+        <th onclick="sortMembers('level')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Level <span id="indicator-level" class="text-slate-600 ml-1">↕</span></th>
+        <th onclick="sortMembers('status')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Status <span id="indicator-status" class="text-indigo-400 font-bold ml-1">▼</span></th>
+        <th onclick="sortMembers('position')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Position <span id="indicator-position" class="text-slate-600 ml-1">↕</span></th>
+      `;
+
+      const tableBody = document.getElementById('roster-table');
+      tableBody.innerHTML = '';
+
+      if (allMembers.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned. Fetch data first.</td></tr>';
+        return;
+      }
+
+      allMembers.forEach(m => {
+        const name = m.name || `ID: ${m.id}`;
+        const level = m.level || 'N/A';
+        const position = m.position || 'Member';
+        const statusObj = m.status || {};
+        const state = statusObj.state || 'okay';
+        const until = statusObj.until || 0;
+        
+        let timeText = (String(state).toLowerCase().includes('hospital') && until > 0) ? formatHospitalTime(until) : '';
+        let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        if (String(state).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+
+        tableBody.innerHTML += `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
+            <td class="py-4 px-6 text-slate-400">${level}</td>
+            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}${timeText}</span></td>
+            <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderWarTable() {
+      document.getElementById('table-title').innerText = "Faction War Telemetry & Bleed Respect";
+      document.getElementById('table-subtitle').innerText = "Attacks, incoming hits, and respect lost against opposing factions";
+
+      document.getElementById('table-header').innerHTML = `
+        <th class="py-3 px-6">Member Name / ID</th>
+        <th class="py-3 px-6">Total Hits (Attacks Made)</th>
+        <th class="py-3 px-6">Bleed (Attacked by Enemy)</th>
+        <th class="py-3 px-6 text-rose-400">Bleed Respect Lost</th>
+      `;
+
+      const tableBody = document.getElementById('roster-table');
+      tableBody.innerHTML = '';
+
+      if (allMembers.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data available.</td></tr>';
+        return;
+      }
+
+      // Aggregate attack metrics per member ID
+      const stats = {};
+      allMembers.forEach(m => {
+        stats[m.id] = { name: m.name, hits: 0, bleedCount: 0, bleedRespect: 0 };
+      });
+
+      // Parse attack logs if available
+      const attacksList = Array.isArray(factionAttacks) ? factionAttacks : Object.values(factionAttacks);
+      attacksList.forEach(atk => {
+        const attackerId = atk.attacker_id || atk.attacker;
+        const defenderId = atk.defender_id || atk.defender;
+        const respectLost = Number(atk.respect || atk.respect_loss || 0);
+
+        if (stats[attackerId]) {
+          stats[attackerId].hits++;
+        }
+        if (stats[defenderId]) {
+          stats[defenderId].bleedCount++;
+          stats[defenderId].bleedRespect += respectLost;
+        }
+      });
+
+      Object.values(stats).forEach(s => {
+        tableBody.innerHTML += `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-4 px-6 font-medium text-slate-200">${s.name}</td>
+            <td class="py-4 px-6 font-mono text-indigo-400">${s.hits}</td>
+            <td class="py-4 px-6 font-mono text-amber-400">${s.bleedCount}</td>
+            <td class="py-4 px-6 font-mono text-rose-400">-${s.bleedRespect.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function sortMembers(column) {
+      if (isWarViewActive || allMembers.length === 0) return;
+      
       if (currentSortColumn === column) {
         currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
       } else {
@@ -166,31 +342,16 @@
 
       allMembers.sort((a, b) => {
         let valA, valB;
-
-        if (column === 'name') {
-          valA = (a.name || '').toLowerCase();
-          valB = (b.name || '').toLowerCase();
-        } else if (column === 'level') {
-          valA = Number(a.level) || 0;
-          valB = Number(b.level) || 0;
-        } else if (column === 'position') {
-          valA = getPositionWeight(a.position);
-          valB = getPositionWeight(b.position);
-        } else if (column === 'status') {
-          valA = getStatusWeight(a.status);
-          valB = getStatusWeight(b.status);
-        }
+        if (column === 'name') { valA = (a.name || '').toLowerCase(); valB = (b.name || '').toLowerCase(); }
+        else if (column === 'level') { valA = Number(a.level) || 0; valB = Number(b.level) || 0; }
+        else if (column === 'position') { valA = getPositionWeight(a.position); valB = getPositionWeight(b.position); }
+        else if (column === 'status') { valA = getStatusWeight(a.status); valB = getStatusWeight(b.status); }
 
         if (valA < valB) return currentSortDirection === 'asc' ? -1 : 1;
         if (valA > valB) return currentSortDirection === 'asc' ? 1 : -1;
         return 0;
       });
 
-      updateSortIndicators();
-      renderRoster();
-    }
-
-    function updateSortIndicators() {
       ['name', 'level', 'status', 'position'].forEach(col => {
         const el = document.getElementById(`indicator-${col}`);
         if (el) {
@@ -203,91 +364,8 @@
           }
         }
       });
-    }
 
-    function renderRoster() {
-      const tableBody = document.getElementById('roster-table');
-      tableBody.innerHTML = '';
-
-      if (allMembers.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
-        return;
-      }
-
-      allMembers.forEach(m => {
-        const name = m.name || `ID: ${m.id}`;
-        const level = m.level || 'N/A';
-        const position = m.position || 'Member';
-        
-        const statusObj = m.status || {};
-        const state = statusObj.state || m.state || 'okay';
-        const untilTimestamp = statusObj.until || 0;
-        
-        let timeText = '';
-        const stateLower = String(state).toLowerCase();
-        
-        // Only attach timer if state is hospital
-        if (stateLower.includes('hospital') && untilTimestamp > 0) {
-          timeText = formatHospitalTime(untilTimestamp);
-        }
-
-        let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-        if (stateLower.includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
-        if (stateLower.includes('travel') || stateLower.includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-
-        const row = `
-          <tr class="hover:bg-slate-800/40 transition-colors">
-            <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
-            <td class="py-4 px-6 text-slate-400">${level}</td>
-            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}${timeText}</span></td>
-            <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
-          </tr>
-        `;
-        tableBody.innerHTML += row;
-      });
-    }
-
-    async function fetchData() {
-      const apiKey = document.getElementById('api-key-input').value.trim();
-      const statusText = document.getElementById('roster-status');
-      
-      if (!apiKey) {
-        statusText.innerText = "Please enter an API key.";
-        return;
-      }
-
-      if (!ALLOWED_FACTIONS.includes(currentFactionId)) {
-        statusText.innerText = "Error: Invalid faction selection.";
-        return;
-      }
-
-      statusText.innerText = "Querying via Netlify Serverless Backend...";
-
-      try {
-        const response = await fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&key=${apiKey}`);
-        const json = await response.json();
-
-        if (json.error) {
-          statusText.innerText = `API Error: ${json.error.message || 'Unknown'} (Code ${json.error.code || 'N/A'})`;
-          return;
-        }
-
-        allMembers = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
-        document.getElementById('member-count').innerText = allMembers.length;
-
-        // Default sort by status priority (Okay first, then traveling/abroad, then hospital)
-        currentSortColumn = 'status';
-        currentSortDirection = 'asc';
-        allMembers.sort((a, b) => getStatusWeight(a.status) - getStatusWeight(b.status));
-
-        updateSortIndicators();
-        renderRoster();
-
-        statusText.innerText = `Successfully loaded data for ${currentFactionName}!`;
-
-      } catch (err) {
-        statusText.innerText = `Fetch Error: ${err.message}`;
-      }
+      renderRoster();
     }
   </script>
 </body>
