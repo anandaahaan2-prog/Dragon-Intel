@@ -61,21 +61,22 @@
     <section class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
       <div class="p-6 border-b border-slate-800 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-white">Live Member Roster</h2>
+        <span class="text-xs text-slate-500">Click column headers to sort</span>
       </div>
 
       <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse">
+        <table class="w-full text-left border-collapse select-none">
           <thead>
             <tr class="bg-slate-950/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
-              <th class="py-3 px-6">Name / ID</th>
-              <th class="py-3 px-6">Level</th>
+              <th onclick="sortMembers('name')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Name / ID <span id="indicator-name" class="text-slate-600 ml-1">↕</span></th>
+              <th onclick="sortMembers('level')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Level <span id="indicator-level" class="text-slate-600 ml-1">↕</span></th>
               <th class="py-3 px-6">Status</th>
-              <th class="py-3 px-6">Position</th>
+              <th onclick="sortMembers('position')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Position <span id="indicator-position" class="text-indigo-400 font-bold ml-1">▼</span></th>
             </tr>
           </thead>
           <tbody id="roster-table" class="divide-y divide-slate-800 text-sm">
             <tr>
-              <td colspan="4" class="py-6 text-center text-slate-500">Paste your API Key and click "Fetch Live Data".</td>
+              <td colspan="4" class="py-6 text-center text-slate-500">Enter your API key and click "Fetch Live Data".</td>
             </tr>
           </tbody>
         </table>
@@ -86,22 +87,22 @@
   <script>
     let currentFactionId = '55650';
     let currentFactionName = 'Crimson Dragon';
+    let allMembers = [];
+    let currentSortColumn = 'position';
+    let currentSortDirection = 'asc';
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const savedKey = localStorage.getItem('dragon_intel_v2_key');
-      if (savedKey) {
-        document.getElementById('api-key-input').value = savedKey;
-        fetchData();
-      }
-    });
+    // Strict validation list of allowed factions
+    const ALLOWED_FACTIONS = ['55650', '52872'];
 
     function switchFaction(id, name) {
+      if (!ALLOWED_FACTIONS.includes(id)) return;
+
       currentFactionId = id;
       currentFactionName = name;
 
       document.getElementById('faction-title').innerText = name;
       document.getElementById('active-faction-display').innerText = `${name} (${id})`;
-
+      
       if (id === '55650') {
         document.getElementById('btn-crimson').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
         document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white';
@@ -110,19 +111,117 @@
         document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
       }
 
-      fetchData();
+      // Only fetch if key is already entered
+      const apiKey = document.getElementById('api-key-input').value.trim();
+      if (apiKey) {
+        fetchData();
+      }
+    }
+
+    function getPositionWeight(position) {
+      if (!position) return 99;
+      const p = position.toLowerCase();
+      if (p === 'leader' || (p.includes('leader') && !p.includes('co'))) return 1;
+      if (p.includes('co-leader') || p.includes('coleader')) return 2;
+      if (p.includes('officer') || p.includes('elder')) return 3;
+      if (p.includes('member')) return 4;
+      return 5;
+    }
+
+    function sortMembers(column) {
+      if (allMembers.length === 0) return;
+
+      if (currentSortColumn === column) {
+        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSortColumn = column;
+        currentSortDirection = 'asc';
+      }
+
+      allMembers.sort((a, b) => {
+        let valA, valB;
+
+        if (column === 'name') {
+          valA = (a.name || '').toLowerCase();
+          valB = (b.name || '').toLowerCase();
+        } else if (column === 'level') {
+          valA = Number(a.level) || 0;
+          valB = Number(b.level) || 0;
+        } else if (column === 'position') {
+          valA = getPositionWeight(a.position);
+          valB = getPositionWeight(b.position);
+        }
+
+        if (valA < valB) return currentSortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return currentSortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      updateSortIndicators();
+      renderRoster();
+    }
+
+    function updateSortIndicators() {
+      ['name', 'level', 'position'].forEach(col => {
+        const el = document.getElementById(`indicator-${col}`);
+        if (el) {
+          if (currentSortColumn === col) {
+            el.innerText = currentSortDirection === 'asc' ? '▲' : '▼';
+            el.className = 'text-indigo-400 font-bold ml-1';
+          } else {
+            el.innerText = '↕';
+            el.className = 'text-slate-600 ml-1';
+          }
+        }
+      });
+    }
+
+    function renderRoster() {
+      const tableBody = document.getElementById('roster-table');
+      tableBody.innerHTML = '';
+
+      if (allMembers.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
+        return;
+      }
+
+      allMembers.forEach(m => {
+        const name = m.name || `ID: ${m.id}`;
+        const level = m.level || 'N/A';
+        const position = m.position || 'Member';
+        const statusState = m.status?.state || m.state || 'okay';
+
+        let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        if (String(statusState).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        if (String(statusState).toLowerCase().includes('travel') || String(statusState).toLowerCase().includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+
+        const row = `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
+            <td class="py-4 px-6 text-slate-400">${level}</td>
+            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${statusState}</span></td>
+            <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
+          </tr>
+        `;
+        tableBody.innerHTML += row;
+      });
     }
 
     async function fetchData() {
       const apiKey = document.getElementById('api-key-input').value.trim();
       const statusText = document.getElementById('roster-status');
-
+      
       if (!apiKey) {
         statusText.innerText = "Please enter an API key.";
         return;
       }
 
-      localStorage.setItem('dragon_intel_v2_key', apiKey);
+      // Security check: Ensure selected faction is strictly Crimson or Blood Dragon
+      if (!ALLOWED_FACTIONS.includes(currentFactionId)) {
+        statusText.innerText = "Error: Invalid faction selection.";
+        return;
+      }
+
       statusText.innerText = "Querying via Netlify Serverless Backend...";
 
       try {
@@ -134,40 +233,18 @@
           return;
         }
 
-        const members = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
-        document.getElementById('member-count').innerText = members.length;
+        allMembers = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
+        document.getElementById('member-count').innerText = allMembers.length;
 
-        const tableBody = document.getElementById('roster-table');
-        tableBody.innerHTML = '';
+        // Default sort by position hierarchy on fetch (Leader first)
+        currentSortColumn = 'position';
+        currentSortDirection = 'asc';
+        allMembers.sort((a, b) => getPositionWeight(a.position) - getPositionWeight(b.position));
 
-        if (members.length === 0) {
-          tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
-          statusText.innerText = "Loaded 0 members.";
-          return;
-        }
+        updateSortIndicators();
+        renderRoster();
 
-        members.forEach(m => {
-          const name = m.name || `ID: ${m.id}`;
-          const level = m.level || 'N/A';
-          const position = m.position || 'Member';
-          const statusState = m.status?.state || m.state || 'okay';
-
-          let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-          if (String(statusState).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
-          if (String(statusState).toLowerCase().includes('travel') || String(statusState).toLowerCase().includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-
-          const row = `
-            <tr class="hover:bg-slate-800/40 transition-colors">
-              <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
-              <td class="py-4 px-6 text-slate-400">${level}</td>
-              <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${statusState}</span></td>
-              <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
-            </tr>
-          `;
-          tableBody.innerHTML += row;
-        });
-
-        statusText.innerText = `Successfully loaded via Netlify Function!`;
+        statusText.innerText = `Successfully loaded data for ${currentFactionName}!`;
 
       } catch (err) {
         statusText.innerText = `Fetch Error: ${err.message}`;
