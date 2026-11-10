@@ -144,7 +144,6 @@
     let factionAttacks = [];
     let factionWars = {};
     let isWarViewActive = false;
-    let refreshInterval = null;
 
     let currentSortColumn = 'status';
     let currentSortDirection = 'asc';
@@ -197,18 +196,21 @@
       if (diff <= 0) return '';
       const hours = Math.floor(diff / 3600);
       const minutes = Math.floor((diff % 3600) / 60);
-      return hours > 0 ? ` (${hours}h ${minutes}m)` : ` (${minutes}m)`;
+      const seconds = diff % 60;
+      if (hours > 0) return ` (${hours}h ${minutes}m)`;
+      if (minutes > 0) return ` (${minutes}m ${seconds}s)`;
+      return ` (${seconds}s)`;
     }
 
-    async function fetchAllData(isBackground = false) {
+    async function fetchAllData() {
       const apiKey = document.getElementById('api-key-input').value.trim();
       const errorMsg = document.getElementById('login-error-msg');
       
       if (!apiKey) {
-        if (!isBackground) errorMsg.innerText = "Please enter your API key.";
+        errorMsg.innerText = "Please enter your API key.";
         return;
       }
-      if (!isBackground) errorMsg.innerText = "";
+      errorMsg.innerText = "";
 
       try {
         const [membersRes, warsRes, attacksRes] = await Promise.all([
@@ -222,7 +224,7 @@
         const attacksJson = attacksRes ? await attacksRes.json() : {};
 
         if (membersJson.error) {
-          if (!isBackground) errorMsg.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
+          errorMsg.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
           return;
         }
 
@@ -230,14 +232,8 @@
         factionWars = warsJson.wars || warsJson.faction?.wars || warsJson || {};
         factionAttacks = attacksJson.attacks || attacksJson.faction?.attacks || attacksJson || [];
 
-        if (!isBackground) {
-          document.getElementById('login-container').classList.add('hidden');
-          document.getElementById('dashboard-container').classList.remove('hidden');
-          
-          // Start automatic background polling every 5 seconds
-          if (refreshInterval) clearInterval(refreshInterval);
-          refreshInterval = setInterval(() => fetchAllData(true), 5000);
-        }
+        document.getElementById('login-container').classList.add('hidden');
+        document.getElementById('dashboard-container').classList.remove('hidden');
 
         document.getElementById('member-count').innerText = allMembers.length;
 
@@ -264,16 +260,18 @@
         if (isWarViewActive) {
           renderWarTable();
         } else {
+          currentSortColumn = 'status';
+          currentSortDirection = 'asc';
+          allMembers.sort((a, b) => getStatusWeight(a.status) - getStatusWeight(b.status));
           renderRoster();
         }
 
       } catch (err) {
-        if (!isBackground) errorMsg.innerText = `Connection Error: ${err.message}`;
+        errorMsg.innerText = `Connection Error: ${err.message}`;
       }
     }
 
     function logout() {
-      if (refreshInterval) clearInterval(refreshInterval);
       document.getElementById('dashboard-container').classList.add('hidden');
       document.getElementById('login-container').classList.remove('hidden');
       document.getElementById('api-key-input').value = '';
