@@ -94,9 +94,14 @@
           <span class="text-xs uppercase text-slate-500 tracking-wider">Active Faction Target</span>
           <div id="active-faction-display" class="text-xl font-bold text-indigo-400 mt-1">Crimson Dragon (55650)</div>
         </div>
-        <button onclick="logout()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-300 transition-colors">
-          Log Out / Change Key
-        </button>
+        <div class="flex items-center gap-2">
+          <button onclick="fetchAllData()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold rounded-lg text-white transition-colors">
+            🔄 Sync Now
+          </button>
+          <button onclick="logout()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-300 transition-colors">
+            Log Out
+          </button>
+        </div>
       </div>
 
       <div class="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-xl">
@@ -139,6 +144,7 @@
     let factionAttacks = [];
     let factionWars = {};
     let isWarViewActive = false;
+    let refreshInterval = null;
 
     let currentSortColumn = 'status';
     let currentSortDirection = 'asc';
@@ -194,15 +200,15 @@
       return hours > 0 ? ` (${hours}h ${minutes}m)` : ` (${minutes}m)`;
     }
 
-    async function fetchAllData() {
+    async function fetchAllData(isBackground = false) {
       const apiKey = document.getElementById('api-key-input').value.trim();
       const errorMsg = document.getElementById('login-error-msg');
       
       if (!apiKey) {
-        errorMsg.innerText = "Please enter your API key.";
+        if (!isBackground) errorMsg.innerText = "Please enter your API key.";
         return;
       }
-      errorMsg.innerText = "";
+      if (!isBackground) errorMsg.innerText = "";
 
       try {
         const [membersRes, warsRes, attacksRes] = await Promise.all([
@@ -216,7 +222,7 @@
         const attacksJson = attacksRes ? await attacksRes.json() : {};
 
         if (membersJson.error) {
-          errorMsg.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
+          if (!isBackground) errorMsg.innerText = `API Error: ${membersJson.error.message || 'Unknown'} (Code ${membersJson.error.code})`;
           return;
         }
 
@@ -224,8 +230,14 @@
         factionWars = warsJson.wars || warsJson.faction?.wars || warsJson || {};
         factionAttacks = attacksJson.attacks || attacksJson.faction?.attacks || attacksJson || [];
 
-        document.getElementById('login-container').classList.add('hidden');
-        document.getElementById('dashboard-container').classList.remove('hidden');
+        if (!isBackground) {
+          document.getElementById('login-container').classList.add('hidden');
+          document.getElementById('dashboard-container').classList.remove('hidden');
+          
+          // Start automatic background polling every 5 seconds
+          if (refreshInterval) clearInterval(refreshInterval);
+          refreshInterval = setInterval(() => fetchAllData(true), 5000);
+        }
 
         document.getElementById('member-count').innerText = allMembers.length;
 
@@ -252,19 +264,16 @@
         if (isWarViewActive) {
           renderWarTable();
         } else {
-          currentSortColumn = 'status';
-          currentSortDirection = 'asc';
-          allMembers.sort((a, b) => getStatusWeight(a.status) - getStatusWeight(b.status));
-          updateSortIndicators();
           renderRoster();
         }
 
       } catch (err) {
-        errorMsg.innerText = `Connection Error: ${err.message}`;
+        if (!isBackground) errorMsg.innerText = `Connection Error: ${err.message}`;
       }
     }
 
     function logout() {
+      if (refreshInterval) clearInterval(refreshInterval);
       document.getElementById('dashboard-container').classList.add('hidden');
       document.getElementById('login-container').classList.remove('hidden');
       document.getElementById('api-key-input').value = '';
