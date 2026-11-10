@@ -70,8 +70,8 @@
             <tr class="bg-slate-950/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
               <th onclick="sortMembers('name')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Name / ID <span id="indicator-name" class="text-slate-600 ml-1">↕</span></th>
               <th onclick="sortMembers('level')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Level <span id="indicator-level" class="text-slate-600 ml-1">↕</span></th>
-              <th class="py-3 px-6">Status</th>
-              <th onclick="sortMembers('position')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Position <span id="indicator-position" class="text-indigo-400 font-bold ml-1">▼</span></th>
+              <th onclick="sortMembers('status')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Status <span id="indicator-status" class="text-indigo-400 font-bold ml-1">▼</span></th>
+              <th onclick="sortMembers('position')" class="py-3 px-6 cursor-pointer hover:text-white transition-colors">Position <span id="indicator-position" class="text-slate-600 ml-1">↕</span></th>
             </tr>
           </thead>
           <tbody id="roster-table" class="divide-y divide-slate-800 text-sm">
@@ -88,10 +88,9 @@
     let currentFactionId = '55650';
     let currentFactionName = 'Crimson Dragon';
     let allMembers = [];
-    let currentSortColumn = 'position';
+    let currentSortColumn = 'status';
     let currentSortDirection = 'asc';
 
-    // Strict validation list of allowed factions
     const ALLOWED_FACTIONS = ['55650', '52872'];
 
     function switchFaction(id, name) {
@@ -111,7 +110,6 @@
         document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
       }
 
-      // Only fetch if key is already entered
       const apiKey = document.getElementById('api-key-input').value.trim();
       if (apiKey) {
         fetchData();
@@ -126,6 +124,34 @@
       if (p.includes('officer') || p.includes('elder')) return 3;
       if (p.includes('member')) return 4;
       return 5;
+    }
+
+    function getStatusWeight(status) {
+      if (!status) return 4;
+      const state = (status.state || status.description || '').toLowerCase();
+      if (state.includes('okay')) return 1;
+      if (state.includes('travel') || state.includes('abroad')) return 2;
+      if (state.includes('hospital')) return 3;
+      return 4;
+    }
+
+    function formatHospitalTime(untilTimestamp) {
+      if (!untilTimestamp) return '';
+      const now = Math.floor(Date.now() / 1000);
+      const diff = untilTimestamp - now;
+      if (diff <= 0) return '';
+
+      const hours = Math.floor(diff / 3600);
+      const minutes = Math.floor((diff % 3600) / 60);
+      const seconds = diff % 60;
+
+      if (hours > 0) {
+        return ` (${hours}h ${minutes}m)`;
+      } else if (minutes > 0) {
+        return ` (${minutes}m ${seconds}s)`;
+      } else {
+        return ` (${seconds}s)`;
+      }
     }
 
     function sortMembers(column) {
@@ -150,6 +176,9 @@
         } else if (column === 'position') {
           valA = getPositionWeight(a.position);
           valB = getPositionWeight(b.position);
+        } else if (column === 'status') {
+          valA = getStatusWeight(a.status);
+          valB = getStatusWeight(b.status);
         }
 
         if (valA < valB) return currentSortDirection === 'asc' ? -1 : 1;
@@ -162,7 +191,7 @@
     }
 
     function updateSortIndicators() {
-      ['name', 'level', 'position'].forEach(col => {
+      ['name', 'level', 'status', 'position'].forEach(col => {
         const el = document.getElementById(`indicator-${col}`);
         if (el) {
           if (currentSortColumn === col) {
@@ -189,17 +218,28 @@
         const name = m.name || `ID: ${m.id}`;
         const level = m.level || 'N/A';
         const position = m.position || 'Member';
-        const statusState = m.status?.state || m.state || 'okay';
+        
+        const statusObj = m.status || {};
+        const state = statusObj.state || m.state || 'okay';
+        const untilTimestamp = statusObj.until || 0;
+        
+        let timeText = '';
+        const stateLower = String(state).toLowerCase();
+        
+        // Only attach timer if state is hospital
+        if (stateLower.includes('hospital') && untilTimestamp > 0) {
+          timeText = formatHospitalTime(untilTimestamp);
+        }
 
         let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-        if (String(statusState).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
-        if (String(statusState).toLowerCase().includes('travel') || String(statusState).toLowerCase().includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        if (stateLower.includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        if (stateLower.includes('travel') || stateLower.includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
 
         const row = `
           <tr class="hover:bg-slate-800/40 transition-colors">
             <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
             <td class="py-4 px-6 text-slate-400">${level}</td>
-            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${statusState}</span></td>
+            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}${timeText}</span></td>
             <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
           </tr>
         `;
@@ -216,7 +256,6 @@
         return;
       }
 
-      // Security check: Ensure selected faction is strictly Crimson or Blood Dragon
       if (!ALLOWED_FACTIONS.includes(currentFactionId)) {
         statusText.innerText = "Error: Invalid faction selection.";
         return;
@@ -236,10 +275,10 @@
         allMembers = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
         document.getElementById('member-count').innerText = allMembers.length;
 
-        // Default sort by position hierarchy on fetch (Leader first)
-        currentSortColumn = 'position';
+        // Default sort by status priority (Okay first, then traveling/abroad, then hospital)
+        currentSortColumn = 'status';
         currentSortDirection = 'asc';
-        allMembers.sort((a, b) => getPositionWeight(a.position) - getPositionWeight(b.position));
+        allMembers.sort((a, b) => getStatusWeight(a.status) - getStatusWeight(b.status));
 
         updateSortIndicators();
         renderRoster();
