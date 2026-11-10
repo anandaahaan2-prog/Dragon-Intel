@@ -1,5 +1,6 @@
 export async function handler(event) {
   const factionId = event.queryStringParameters.faction || '55650';
+  const selection = event.queryStringParameters.selection || 'members';
   const apiKey = event.queryStringParameters.key;
 
   if (!apiKey) {
@@ -7,7 +8,8 @@ export async function handler(event) {
   }
 
   try {
-    const targetUrl = `https://api.torn.com/v2/faction/${factionId}/members?key=${apiKey}`;
+    // Allows requesting members, wars, or attacks dynamically from Torn API v2
+    const targetUrl = `https://api.torn.com/v2/faction/${factionId}/${selection}?key=${apiKey}`;
     const response = await fetch(targetUrl);
     const data = await response.json();
 
