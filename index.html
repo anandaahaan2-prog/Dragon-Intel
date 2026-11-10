@@ -16,7 +16,7 @@
         <div class="flex items-center gap-3">
           <h1 id="faction-title" class="text-2xl font-bold text-white">Crimson Dragon</h1>
           <span id="war-status-badge" class="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">
-            API v2 Active
+            Live Telemetry
           </span>
         </div>
         <p class="text-sm text-slate-400 mt-1">Dragon-Intel War & Roster Tracker</p>
@@ -103,6 +103,15 @@
     let currentFactionId = '55650';
     let currentFactionName = 'Crimson Dragon';
 
+    // Automatically load key if saved previously
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedKey = localStorage.getItem('dragon_intel_key');
+      if (savedKey) {
+        document.getElementById('api-key-input').value = savedKey;
+        fetchData();
+      }
+    });
+
     function switchFaction(id, name) {
       currentFactionId = id;
       currentFactionName = name;
@@ -130,39 +139,26 @@
         return;
       }
 
-      statusText.innerText = "Fetching live Torn API v2 data...";
+      // Save key locally on browser for convenience
+      localStorage.setItem('dragon_intel_key', apiKey);
+      statusText.innerText = "Fetching live Torn API data...";
 
       try {
-        // Fetch basic info and members using API v2 endpoints
-        const [basicRes, membersRes] = await Promise.all([
-          fetch(`https://api.torn.com/v2/faction/${currentFactionId}/basic?key=${apiKey}`),
-          fetch(`https://api.torn.com/v2/faction/${currentFactionId}/members?key=${apiKey}`)
-        ]);
+        // Direct single call to standard Torn API
+        const response = await fetch(`https://api.torn.com/faction/${currentFactionId}?selections=basic,members&key=${apiKey}`);
+        const data = await response.json();
 
-        const basicData = await basicRes.json();
-        const membersData = await membersRes.json();
-
-        if (basicData.error) {
-          statusText.innerText = `Error: ${basicData.error.error}`;
+        if (data.error) {
+          statusText.innerText = `API Error: ${data.error.error} (Code ${data.error.code})`;
           return;
         }
 
-        if (membersData.error) {
-          statusText.innerText = `Error: ${membersData.error.error}`;
-          return;
-        }
+        // Display Faction Respect
+        document.getElementById('respect-val').innerText = Number(data.respect || 0).toLocaleString();
 
-        // Render Respect
-        const respect = basicData.basic ? basicData.basic.respect : (basicData.respect || 0);
-        document.getElementById('respect-val').innerText = Number(respect).toLocaleString();
-
-        // Render Members
-        let memberList = [];
-        if (Array.isArray(membersData.members)) {
-          memberList = membersData.members;
-        } else if (typeof membersData.members === 'object' && membersData.members !== null) {
-          memberList = Object.keys(membersData.members).map(id => ({ id, ...membersData.members[id] }));
-        }
+        // Extract and Render Roster
+        const membersObj = data.members || {};
+        const memberList = Object.keys(membersObj).map(id => ({ id, ...membersObj[id] }));
 
         document.getElementById('member-count').innerText = `Members Tracked: ${memberList.length}`;
 
@@ -170,16 +166,16 @@
         tableBody.innerHTML = '';
 
         if (memberList.length === 0) {
-          tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
+          tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned. Check API key permissions.</td></tr>';
         } else {
           memberList.forEach(m => {
-            const state = m.status ? (m.status.state || m.status) : 'offline';
+            const state = m.status ? m.status.state : 'offline';
             let badgeClass = 'bg-slate-700 text-slate-300';
             if (state === 'okay') badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
             if (state === 'hospital') badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
             if (state === 'abroad' || state === 'traveling') badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
 
-            const lastActionText = m.last_action ? (m.last_action.relative || m.last_action.status || 'N/A') : 'N/A';
+            const lastActionText = m.last_action ? m.last_action.relative : 'N/A';
 
             const row = `
               <tr class="hover:bg-slate-800/40 transition-colors">
@@ -193,10 +189,10 @@
           });
         }
 
-        statusText.innerText = `Live data loaded for ${currentFactionName}`;
+        statusText.innerText = `Loaded ${memberList.length} members for ${currentFactionName}`;
 
       } catch (err) {
-        statusText.innerText = `Failed to fetch API data: ${err.message}`;
+        statusText.innerText = `Network/CORS Error: ${err.message}`;
       }
     }
   </script>
