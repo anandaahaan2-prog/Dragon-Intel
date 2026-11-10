@@ -16,7 +16,7 @@
         <div class="flex items-center gap-3">
           <h1 id="faction-title" class="text-2xl font-bold text-white">Crimson Dragon</h1>
           <span class="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">
-            API v2 Connected
+            API v2 Live
           </span>
         </div>
         <p class="text-sm text-slate-400 mt-1">Dragon-Intel War & Roster Tracker</p>
@@ -130,60 +130,74 @@
       }
 
       localStorage.setItem('dragon_intel_v2_key', apiKey);
-      statusText.innerText = "Querying API v2...";
+      statusText.innerText = "Querying API v2 via secure proxy fallback...";
 
-      try {
-        // Direct API v2 call via allorigins CORS proxy
-        const targetUrl = `https://api.torn.com/v2/faction/${currentFactionId}/members?key=${apiKey}`;
-        const proxyUrl = `https://api.allorigins.win/raw?url=` + encodeURIComponent(targetUrl);
+      const targetUrl = `https://api.torn.com/v2/faction/${currentFactionId}/members?key=${apiKey}`;
+      
+      // List of robust public proxies to prevent "Failed to fetch"
+      const proxyUrls = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
+      ];
 
-        const response = await fetch(proxyUrl);
-        const json = await response.json();
+      let json = null;
 
-        if (json.error) {
-          statusText.innerText = `API v2 Error: ${json.error.error || json.error.message || 'Unknown error'} (Code ${json.error.code})`;
-          return;
+      for (const proxyUrl of proxyUrls) {
+        try {
+          const response = await fetch(proxyUrl);
+          if (response.ok) {
+            json = await response.json();
+            break; // Successfully got data, stop trying proxies
+          }
+        } catch (err) {
+          console.warn("Proxy attempt failed, trying backup...", err);
         }
-
-        // Parse v2 member response array
-        const members = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
-        document.getElementById('member-count').innerText = members.length;
-
-        const tableBody = document.getElementById('roster-table');
-        tableBody.innerHTML = '';
-
-        if (members.length === 0) {
-          tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned from API v2.</td></tr>';
-          statusText.innerText = "Loaded 0 members.";
-          return;
-        }
-
-        members.forEach(m => {
-          const name = m.name || `ID: ${m.id}`;
-          const level = m.level || 'N/A';
-          const position = m.position || 'Member';
-          const statusState = m.status?.state || m.state || 'okay';
-
-          let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-          if (String(statusState).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
-          if (String(statusState).toLowerCase().includes('travel') || String(statusState).toLowerCase().includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-
-          const row = `
-            <tr class="hover:bg-slate-800/40 transition-colors">
-              <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
-              <td class="py-4 px-6 text-slate-400">${level}</td>
-              <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${statusState}</span></td>
-              <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
-            </tr>
-          `;
-          tableBody.innerHTML += row;
-        });
-
-        statusText.innerText = `Successfully loaded v2 data!`;
-
-      } catch (err) {
-        statusText.innerText = `Fetch Error: ${err.message}`;
       }
+
+      if (!json) {
+        statusText.innerText = "Error: Failed to fetch from all available proxies. Check network or ad-blocker.";
+        return;
+      }
+
+      if (json.error) {
+        statusText.innerText = `API v2 Error: ${json.error.error || json.error.message || 'Unknown'} (Code ${json.error.code})`;
+        return;
+      }
+
+      const members = json.members || json.faction?.members || (Array.isArray(json) ? json : []);
+      document.getElementById('member-count').innerText = members.length;
+
+      const tableBody = document.getElementById('roster-table');
+      tableBody.innerHTML = '';
+
+      if (members.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned from API v2.</td></tr>';
+        statusText.innerText = "Loaded 0 members.";
+        return;
+      }
+
+      members.forEach(m => {
+        const name = m.name || `ID: ${m.id}`;
+        const level = m.level || 'N/A';
+        const position = m.position || 'Member';
+        const statusState = m.status?.state || m.state || 'okay';
+
+        let badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        if (String(statusState).toLowerCase().includes('hospital')) badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        if (String(statusState).toLowerCase().includes('travel') || String(statusState).toLowerCase().includes('abroad')) badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+
+        const row = `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-4 px-6 font-medium text-slate-200">${name} <span class="text-xs text-slate-500 font-mono">(#${m.id})</span></td>
+            <td class="py-4 px-6 text-slate-400">${level}</td>
+            <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${statusState}</span></td>
+            <td class="py-4 px-6 text-slate-400 text-xs">${position}</td>
+          </tr>
+        `;
+        tableBody.innerHTML += row;
+      });
+
+      statusText.innerText = `Successfully loaded v2 data!`;
     }
   </script>
 </body>
