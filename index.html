@@ -16,7 +16,7 @@
         <div class="flex items-center gap-3">
           <h1 id="faction-title" class="text-2xl font-bold text-white">Crimson Dragon</h1>
           <span id="war-status-badge" class="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">
-            Live Telemetry
+            API v2 Active
           </span>
         </div>
         <p class="text-sm text-slate-400 mt-1">Dragon-Intel War & Roster Tracker</p>
@@ -130,24 +130,40 @@
         return;
       }
 
-      statusText.innerText = "Fetching live Torn API data...";
+      statusText.innerText = "Fetching live Torn API v2 data...";
 
       try {
-        // Querying base faction selections compatible across API versions
-        const res = await fetch(`https://api.torn.com/faction/${currentFactionId}?selections=basic,members&key=${apiKey}`);
-        const data = await res.json();
+        // Fetch basic info and members using API v2 endpoints
+        const [basicRes, membersRes] = await Promise.all([
+          fetch(`https://api.torn.com/v2/faction/${currentFactionId}/basic?key=${apiKey}`),
+          fetch(`https://api.torn.com/v2/faction/${currentFactionId}/members?key=${apiKey}`)
+        ]);
 
-        if (data.error) {
-          statusText.innerText = `Error: ${data.error.error}`;
+        const basicData = await basicRes.json();
+        const membersData = await membersRes.json();
+
+        if (basicData.error) {
+          statusText.innerText = `Error: ${basicData.error.error}`;
           return;
         }
 
-        // Render Respect & Basic Info
-        document.getElementById('respect-val').innerText = Number(data.respect || 0).toLocaleString();
-        
+        if (membersData.error) {
+          statusText.innerText = `Error: ${membersData.error.error}`;
+          return;
+        }
+
+        // Render Respect
+        const respect = basicData.basic ? basicData.basic.respect : (basicData.respect || 0);
+        document.getElementById('respect-val').innerText = Number(respect).toLocaleString();
+
         // Render Members
-        const members = data.members || {};
-        const memberList = Object.keys(members).map(id => ({ id, ...members[id] }));
+        let memberList = [];
+        if (Array.isArray(membersData.members)) {
+          memberList = membersData.members;
+        } else if (typeof membersData.members === 'object' && membersData.members !== null) {
+          memberList = Object.keys(membersData.members).map(id => ({ id, ...membersData.members[id] }));
+        }
+
         document.getElementById('member-count').innerText = `Members Tracked: ${memberList.length}`;
 
         const tableBody = document.getElementById('roster-table');
@@ -157,18 +173,20 @@
           tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
         } else {
           memberList.forEach(m => {
-            const state = m.status ? m.status.state : 'offline';
+            const state = m.status ? (m.status.state || m.status) : 'offline';
             let badgeClass = 'bg-slate-700 text-slate-300';
             if (state === 'okay') badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
             if (state === 'hospital') badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
             if (state === 'abroad' || state === 'traveling') badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+
+            const lastActionText = m.last_action ? (m.last_action.relative || m.last_action.status || 'N/A') : 'N/A';
 
             const row = `
               <tr class="hover:bg-slate-800/40 transition-colors">
                 <td class="py-4 px-6 font-medium text-slate-200">${m.name}</td>
                 <td class="py-4 px-6 text-slate-400">${m.level}</td>
                 <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}</span></td>
-                <td class="py-4 px-6 text-slate-400 font-mono text-xs">${m.last_action ? m.last_action.relative : 'N/A'}</td>
+                <td class="py-4 px-6 text-slate-400 font-mono text-xs">${lastActionText}</td>
               </tr>
             `;
             tableBody.innerHTML += row;
