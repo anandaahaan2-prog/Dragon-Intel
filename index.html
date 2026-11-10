@@ -50,15 +50,15 @@
     <!-- War & Stats Overview Grid -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       
-      <!-- War Score Tracker -->
+      <!-- Faction Status Tracker -->
       <div class="md:col-span-2 bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4 shadow-xl">
         <div class="flex justify-between items-center text-sm font-semibold">
-          <span id="score-us" class="text-indigo-400">Crimson Dragon: --</span>
-          <span class="text-xs uppercase text-slate-500 tracking-wider">Ranked War Telemetry</span>
-          <span id="score-them" class="text-rose-400">Enemy Faction: --</span>
+          <span id="score-us" class="text-indigo-400">Crimson Dragon</span>
+          <span class="text-xs uppercase text-slate-500 tracking-wider">Faction Telemetry</span>
+          <span id="score-them" class="text-rose-400">Target Faction</span>
         </div>
         <div class="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800 flex">
-          <div id="war-progress" class="bg-indigo-600 h-full transition-all duration-500" style="width: 50%;"></div>
+          <div id="war-progress" class="bg-indigo-600 h-full transition-all duration-500" style="width: 100%;"></div>
         </div>
       </div>
 
@@ -75,7 +75,7 @@
     <section class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
       <div class="p-6 border-b border-slate-800 flex justify-between items-center">
         <h2 class="text-lg font-semibold text-white">Live Member Roster</h2>
-        <span id="roster-status" class="text-xs text-slate-400">Showing cached / fallback preview</span>
+        <span id="roster-status" class="text-xs text-slate-400">Enter key to fetch data</span>
       </div>
 
       <div class="overflow-x-auto">
@@ -108,8 +108,8 @@
       currentFactionName = name;
 
       document.getElementById('faction-title').innerText = name;
+      document.getElementById('score-us').innerText = name;
       
-      // Update active button styling
       if (id === '55650') {
         document.getElementById('btn-crimson').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
         document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white';
@@ -133,7 +133,8 @@
       statusText.innerText = "Fetching live Torn API data...";
 
       try {
-        const res = await fetch(`https://api.torn.com/faction/${currentFactionId}?selections=basic,members,rankedwars&key=${apiKey}`);
+        // Querying base faction selections compatible across API versions
+        const res = await fetch(`https://api.torn.com/faction/${currentFactionId}?selections=basic,members&key=${apiKey}`);
         const data = await res.json();
 
         if (data.error) {
@@ -152,23 +153,27 @@
         const tableBody = document.getElementById('roster-table');
         tableBody.innerHTML = '';
 
-        memberList.forEach(m => {
-          const state = m.status ? m.status.state : 'offline';
-          let badgeClass = 'bg-slate-700 text-slate-300';
-          if (state === 'okay') badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-          if (state === 'hospital') badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
-          if (state === 'abroad' || state === 'traveling') badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        if (memberList.length === 0) {
+          tableBody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-500">No member data returned.</td></tr>';
+        } else {
+          memberList.forEach(m => {
+            const state = m.status ? m.status.state : 'offline';
+            let badgeClass = 'bg-slate-700 text-slate-300';
+            if (state === 'okay') badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+            if (state === 'hospital') badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+            if (state === 'abroad' || state === 'traveling') badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
 
-          const row = `
-            <tr class="hover:bg-slate-800/40 transition-colors">
-              <td class="py-4 px-6 font-medium text-slate-200">${m.name}</td>
-              <td class="py-4 px-6 text-slate-400">${m.level}</td>
-              <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}</span></td>
-              <td class="py-4 px-6 text-slate-400 font-mono text-xs">${m.last_action ? m.last_action.relative : 'N/A'}</td>
-            </tr>
-          `;
-          tableBody.innerHTML += row;
-        });
+            const row = `
+              <tr class="hover:bg-slate-800/40 transition-colors">
+                <td class="py-4 px-6 font-medium text-slate-200">${m.name}</td>
+                <td class="py-4 px-6 text-slate-400">${m.level}</td>
+                <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}</span></td>
+                <td class="py-4 px-6 text-slate-400 font-mono text-xs">${m.last_action ? m.last_action.relative : 'N/A'}</td>
+              </tr>
+            `;
+            tableBody.innerHTML += row;
+          });
+        }
 
         statusText.innerText = `Live data loaded for ${currentFactionName}`;
 
