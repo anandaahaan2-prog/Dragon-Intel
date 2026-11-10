@@ -8,8 +8,15 @@ export async function handler(event) {
   }
 
   try {
-    // Allows requesting members, wars, or attacks dynamically from Torn API v2
-    const targetUrl = `https://api.torn.com/v2/faction/${factionId}/${selection}?key=${apiKey}`;
+    // Map selections to correct Torn API v2 endpoints
+    let endpoint = selection;
+    if (selection === 'attacks') {
+      endpoint = 'attacks';
+    } else if (selection === 'wars') {
+      endpoint = 'wars';
+    }
+
+    const targetUrl = `https://api.torn.com/v2/faction/${factionId}/${endpoint}?key=${apiKey}`;
     const response = await fetch(targetUrl);
     const data = await response.json();
 
