@@ -1,34 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Faction Intelligence Hub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dragon-Intel | Faction Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans p-6">
-    <div class="max-w-4xl mx-auto space-y-6">
-        <header class="bg-slate-900 border border-slate-800 p-6 rounded-xl flex justify-between items-center">
-            <div>
-                <h1 class="text-2xl font-bold text-white">Faction Intelligence Hub</h1>
-                <p class="text-sm text-slate-400">War Tracking & Stats Portal</p>
-            </div>
-            <span class="px-3 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-xs font-bold uppercase">Live</span>
-        </header>
+<body class="bg-slate-950 text-slate-100 font-sans p-4 md:p-8">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="bg-slate-900 border border-slate-800 p-6 rounded-xl text-center">
-                <h2 class="text-xl font-bold text-indigo-400">Crimson Dragon</h2>
-                <p class="text-xs text-slate-400 mt-1">Main Faction Stats & War Status</p>
-                <div class="mt-4 text-3xl font-mono text-emerald-400">ACTIVE</div>
-            </div>
-            
-            <div class="bg-slate-900 border border-slate-800 p-6 rounded-xl text-center">
-                <h2 class="text-xl font-bold text-indigo-400">Sister Faction</h2>
-                <p class="text-xs text-slate-400 mt-1">Sister Faction Stats & War Status</p>
-                <div class="mt-4 text-3xl font-mono text-emerald-400">ACTIVE</div>
-            </div>
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- Top Bar & Faction Selector -->
+    <header class="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 id="faction-title" class="text-2xl font-bold text-white">Crimson Dragon</h1>
+          <span id="war-status-badge" class="px-2.5 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">
+            Live Telemetry
+          </span>
         </div>
+        <p class="text-sm text-slate-400 mt-1">Dragon-Intel War & Roster Tracker</p>
+      </div>
+
+      <!-- Faction Switcher Buttons -->
+      <div class="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+        <button id="btn-crimson" onclick="switchFaction('55650', 'Crimson Dragon')" 
+          class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow">
+          Crimson Dragon (55650)
+        </button>
+        <button id="btn-blood" onclick="switchFaction('52872', 'Blood Dragon')" 
+          class="px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white">
+          Blood Dragon (52872)
+        </button>
+      </div>
+    </header>
+
+    <!-- API Key Input Section -->
+    <section class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-center gap-3">
+      <div class="flex-1 w-full">
+        <label class="block text-xs text-slate-400 mb-1 font-medium">Torn API Key (Public Access):</label>
+        <input type="password" id="api-key-input" placeholder="Paste Public API Key here..." 
+          class="w-full bg-slate-950 border border-slate-800 text-slate-200 px-3 py-2 rounded text-sm focus:outline-none focus:border-indigo-500" />
+      </div>
+      <button onclick="fetchData()" class="w-full md:w-auto mt-auto px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded transition-colors">
+        Fetch Live Data
+      </button>
+    </section>
+
+    <!-- War & Stats Overview Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      
+      <!-- War Score Tracker -->
+      <div class="md:col-span-2 bg-slate-900 border border-slate-800 p-6 rounded-xl space-y-4 shadow-xl">
+        <div class="flex justify-between items-center text-sm font-semibold">
+          <span id="score-us" class="text-indigo-400">Crimson Dragon: --</span>
+          <span class="text-xs uppercase text-slate-500 tracking-wider">Ranked War Telemetry</span>
+          <span id="score-them" class="text-rose-400">Enemy Faction: --</span>
+        </div>
+        <div class="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800 flex">
+          <div id="war-progress" class="bg-indigo-600 h-full transition-all duration-500" style="width: 50%;"></div>
+        </div>
+      </div>
+
+      <!-- Quick Metrics -->
+      <div class="bg-slate-900 border border-slate-800 p-6 rounded-xl flex flex-col justify-between shadow-xl">
+        <span class="text-xs uppercase text-slate-400 font-semibold tracking-wider">Faction Respect</span>
+        <div id="respect-val" class="text-2xl font-bold font-mono text-emerald-400 mt-1">--</div>
+        <span id="member-count" class="text-xs text-slate-500 mt-2">Members Tracked: 0</span>
+      </div>
+
     </div>
+
+    <!-- Member Status Roster -->
+    <section class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
+      <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+        <h2 class="text-lg font-semibold text-white">Live Member Roster</h2>
+        <span id="roster-status" class="text-xs text-slate-400">Showing cached / fallback preview</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-950/60 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-800">
+              <th class="py-3 px-6">Name</th>
+              <th class="py-3 px-6">Level</th>
+              <th class="py-3 px-6">Status</th>
+              <th class="py-3 px-6">Last Action</th>
+            </tr>
+          </thead>
+          <tbody id="roster-table" class="divide-y divide-slate-800 text-sm">
+            <tr>
+              <td colspan="4" class="py-6 text-center text-slate-500">Click "Fetch Live Data" or enter your key to pull members.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    let currentFactionId = '55650';
+    let currentFactionName = 'Crimson Dragon';
+
+    function switchFaction(id, name) {
+      currentFactionId = id;
+      currentFactionName = name;
+
+      document.getElementById('faction-title').innerText = name;
+      
+      // Update active button styling
+      if (id === '55650') {
+        document.getElementById('btn-crimson').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
+        document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white';
+      } else {
+        document.getElementById('btn-crimson').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all text-slate-400 hover:text-white';
+        document.getElementById('btn-blood').className = 'px-4 py-1.5 text-xs font-semibold rounded-md transition-all bg-indigo-600 text-white shadow';
+      }
+
+      fetchData();
+    }
+
+    async function fetchData() {
+      const apiKey = document.getElementById('api-key-input').value.trim();
+      const statusText = document.getElementById('roster-status');
+      
+      if (!apiKey) {
+        statusText.innerText = "Please enter an API key above to load live data.";
+        return;
+      }
+
+      statusText.innerText = "Fetching live Torn API data...";
+
+      try {
+        const res = await fetch(`https://api.torn.com/faction/${currentFactionId}?selections=basic,members,rankedwars&key=${apiKey}`);
+        const data = await res.json();
+
+        if (data.error) {
+          statusText.innerText = `Error: ${data.error.error}`;
+          return;
+        }
+
+        // Render Respect & Basic Info
+        document.getElementById('respect-val').innerText = Number(data.respect || 0).toLocaleString();
+        
+        // Render Members
+        const members = data.members || {};
+        const memberList = Object.keys(members).map(id => ({ id, ...members[id] }));
+        document.getElementById('member-count').innerText = `Members Tracked: ${memberList.length}`;
+
+        const tableBody = document.getElementById('roster-table');
+        tableBody.innerHTML = '';
+
+        memberList.forEach(m => {
+          const state = m.status ? m.status.state : 'offline';
+          let badgeClass = 'bg-slate-700 text-slate-300';
+          if (state === 'okay') badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          if (state === 'hospital') badgeClass = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+          if (state === 'abroad' || state === 'traveling') badgeClass = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+
+          const row = `
+            <tr class="hover:bg-slate-800/40 transition-colors">
+              <td class="py-4 px-6 font-medium text-slate-200">${m.name}</td>
+              <td class="py-4 px-6 text-slate-400">${m.level}</td>
+              <td class="py-4 px-6"><span class="px-2 py-1 text-xs font-semibold rounded-full uppercase ${badgeClass}">${state}</span></td>
+              <td class="py-4 px-6 text-slate-400 font-mono text-xs">${m.last_action ? m.last_action.relative : 'N/A'}</td>
+            </tr>
+          `;
+          tableBody.innerHTML += row;
+        });
+
+        statusText.innerText = `Live data loaded for ${currentFactionName}`;
+
+      } catch (err) {
+        statusText.innerText = `Failed to fetch API data: ${err.message}`;
+      }
+    }
+  </script>
 </body>
 </html>
