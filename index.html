@@ -79,7 +79,7 @@
     <section onclick="toggleWarView()" class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-indigo-500/30 p-5 rounded-xl shadow-xl cursor-pointer hover:border-indigo-500 transition-all">
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
         <div>
-          <span class="text-xs uppercase tracking-wider text-indigo-400 font-semibold">Faction War Status</span>
+          <span class="text-xs uppercase tracking-wider text-indigo-400 font-semibold">Active War Conflict</span>
           <div id="war-status-text" class="text-lg font-bold text-white mt-0.5">Checking active conflicts...</div>
         </div>
         <div class="bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2">
@@ -221,19 +221,32 @@
         }
 
         allMembers = membersJson.members || membersJson.faction?.members || [];
-        factionWars = warsJson.wars || warsJson || {};
-        factionAttacks = attacksJson.attacks || attacksJson || [];
+        factionWars = warsJson.wars || warsJson.faction?.wars || warsJson || {};
+        factionAttacks = attacksJson.attacks || attacksJson.faction?.attacks || attacksJson || [];
 
         document.getElementById('login-container').classList.add('hidden');
         document.getElementById('dashboard-container').classList.remove('hidden');
 
         document.getElementById('member-count').innerText = allMembers.length;
 
-        const warKeys = Object.keys(factionWars);
-        if (warKeys.length > 0) {
-          document.getElementById('war-status-text').innerText = `Active War Detected! (${warKeys.length} ongoing conflict(s)) - Click to view Telemetry, Hits & Respect`;
+        const warEntries = Array.isArray(factionWars) ? factionWars : Object.values(factionWars);
+        if (warEntries.length > 0) {
+          let enemyName = "Opposing Faction";
+          let enemyScore = "";
+          let ourScore = "";
+          
+          const activeWar = warEntries[0];
+          if (activeWar.factions) {
+            const factionsArr = Array.isArray(activeWar.factions) ? activeWar.factions : Object.values(activeWar.factions);
+            const enemy = factionsArr.find(f => String(f.id) !== String(currentFactionId));
+            const us = factionsArr.find(f => String(f.id) === String(currentFactionId));
+            if (enemy) enemyName = enemy.name || `Faction #${enemy.id}`;
+            if (enemy) enemyScore = enemy.score || enemy.points || '0';
+            if (us) ourScore = us.score || us.points || '0';
+          }
+          document.getElementById('war-status-text').innerText = `vs ${enemyName} (Score: ${ourScore} - ${enemyScore}) - Click for Telemetry`;
         } else {
-          document.getElementById('war-status-text').innerText = `No active faction wars found. Click to view attack records.`;
+          document.getElementById('war-status-text').innerText = `No active faction wars found.`;
         }
 
         if (isWarViewActive) {
@@ -315,8 +328,8 @@
     }
 
     function renderWarTable() {
-      document.getElementById('table-title').innerText = "Faction War Telemetry & Respect Summary";
-      document.getElementById('table-subtitle').innerText = "Attacks, hits, bleed count, respect gained, and respect lost";
+      document.getElementById('table-title').innerText = `${currentFactionName} War Telemetry`;
+      document.getElementById('table-subtitle').innerText = "Attacks, hits, bleed count, respect gained, and respect lost for our faction members";
 
       document.getElementById('table-header').innerHTML = `
         <th class="py-3 px-6">Member Name / ID</th>
@@ -339,17 +352,19 @@
         stats[m.id] = { name: m.name, hits: 0, respectGained: 0, bleedCount: 0, bleedRespect: 0 };
       });
 
+      const memberIds = new Set(allMembers.map(m => String(m.id)));
       const attacksList = Array.isArray(factionAttacks) ? factionAttacks : Object.values(factionAttacks);
-      attacksList.forEach(atk => {
-        const attackerId = atk.attacker_id || atk.attacker;
-        const defenderId = atk.defender_id || atk.defender;
-        const respectVal = Number(atk.respect || atk.respect_loss || 0);
 
-        if (stats[attackerId]) {
+      attacksList.forEach(atk => {
+        const attackerId = String(atk.attacker?.id || atk.attacker_id || atk.attacker || '');
+        const defenderId = String(atk.defender?.id || atk.defender_id || atk.defender || '');
+        const respectVal = Number(atk.respect || atk.respect_gain || atk.respect_loss || 0);
+
+        if (memberIds.has(attackerId) && stats[attackerId]) {
           stats[attackerId].hits++;
           stats[attackerId].respectGained += respectVal;
         }
-        if (stats[defenderId]) {
+        if (memberIds.has(defenderId) && stats[defenderId]) {
           stats[defenderId].bleedCount++;
           stats[defenderId].bleedRespect += respectVal;
         }
