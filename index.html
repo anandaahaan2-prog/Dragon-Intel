@@ -26,7 +26,7 @@
       
       <div class="flex justify-center items-center gap-3 pt-2">
         <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          🔒 Secure Proxy v2
+          🔒 Cloudflare Edge Proxy v2
         </span>
       </div>
     </div>
@@ -34,7 +34,7 @@
     <div class="w-full bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl space-y-6">
       <div class="space-y-2">
         <label class="block text-xs uppercase tracking-wider text-slate-400 font-semibold">Torn API Key</label>
-        <input type="password" id="api-key-input" placeholder="Your limited API key" 
+        <input type="password" id="api-key-input" autocomplete="off" placeholder="Your limited API key" 
           class="w-full bg-slate-950 border border-slate-800 text-slate-200 px-4 py-3 rounded-xl text-sm focus:outline-none focus:border-indigo-500 transition-colors" />
       </div>
 
@@ -150,6 +150,11 @@
 
     const ALLOWED_FACTIONS = ['55650', '52872'];
 
+    // Ensure input stays strictly blank on page load/refresh
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('api-key-input').value = '';
+    });
+
     function switchFaction(id, name) {
       if (!ALLOWED_FACTIONS.includes(id)) return;
 
@@ -214,9 +219,9 @@
 
       try {
         const [membersRes, warsRes, attacksRes] = await Promise.all([
-          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=members&key=${apiKey}`),
-          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=wars&key=${apiKey}`),
-          fetch(`/.netlify/functions/proxy?faction=${currentFactionId}&selection=attacks&key=${apiKey}`).catch(() => null)
+          fetch(`/proxy?faction=${currentFactionId}&selection=members&key=${apiKey}`),
+          fetch(`/proxy?faction=${currentFactionId}&selection=wars&key=${apiKey}`),
+          fetch(`/proxy?faction=${currentFactionId}&selection=attacks&key=${apiKey}`).catch(() => null)
         ]);
 
         const membersJson = await membersRes.json();
